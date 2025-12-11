@@ -18,6 +18,12 @@ const CONFIG = {
   BRIAN_EMAIL: 'callahanscollectables@gmail.com',
   DAN_EMAIL: 'dtesta620@gmail.com',
 
+  // Name mapping
+  NAMES: {
+    'callahanscollectables@gmail.com': 'Brian Callahan',
+    'dtesta620@gmail.com': 'Dan Testa'
+  },
+
   // Sheet names
   SHEETS: {
     DASHBOARD: 'Dashboard',
@@ -1444,6 +1450,13 @@ function archiveFromSheet(ss, archiveSheet, config, cutoffDate) {
 // =============================================================================
 
 /**
+ * Get user's display name from email
+ */
+function getUserName(email) {
+  return CONFIG.NAMES[email] || email;
+}
+
+/**
  * Remove all sheet protections (run this if sheets are locked)
  */
 function removeAllProtections() {
@@ -1494,9 +1507,16 @@ function showDealerTradeForm() {
       button:hover { background: #004488; }
       h2 { color: #003366; margin-top: 0; }
       .sold-section { background: #FFF9C4; padding: 10px; border-radius: 4px; margin-top: 10px; display: none; }
+      .urgent-box { background: #FF4444; color: white; padding: 8px; border-radius: 4px; margin-bottom: 12px; }
+      .urgent-box label { color: white; display: inline; margin-left: 8px; }
+      .urgent-box input { width: auto; }
     </style>
     <h2>Add Dealer Trade Re-PDI</h2>
     <form id="form">
+      <div class="urgent-box">
+        <input type="checkbox" id="urgent">
+        <label for="urgent">URGENT / 911 - Needs immediate attention!</label>
+      </div>
       <div class="row">
         <div class="form-group">
           <label>Stock Number *</label>
@@ -1548,6 +1568,7 @@ function showDealerTradeForm() {
       document.getElementById('form').addEventListener('submit', function(e) {
         e.preventDefault();
         const data = {
+          urgent: document.getElementById('urgent').checked,
           stock: document.getElementById('stock').value,
           vin: document.getElementById('vin').value,
           vehicle: document.getElementById('vehicle').value,
@@ -1564,7 +1585,7 @@ function showDealerTradeForm() {
     </script>
   `)
   .setWidth(450)
-  .setHeight(480);
+  .setHeight(520);
   SpreadsheetApp.getUi().showModalDialog(html, 'Add Dealer Trade Re-PDI');
 }
 
@@ -1581,11 +1602,14 @@ function addDealerTradeEntry(data) {
     }
 
     const userEmail = Session.getActiveUser().getEmail();
+    const userName = getUserName(userEmail);
     const now = new Date();
 
-    // Calculate priority
+    // Calculate priority - URGENT checkbox overrides everything
     let priority = 'Normal';
-    if (data.sold === 'Yes' && data.deliveryDate) {
+    if (data.urgent) {
+      priority = 'URGENT';
+    } else if (data.sold === 'Yes' && data.deliveryDate) {
       const delivery = new Date(data.deliveryDate);
       const hoursUntil = (delivery - now) / (1000 * 60 * 60);
       if (hoursUntil <= 24) priority = 'URGENT';
@@ -1594,7 +1618,7 @@ function addDealerTradeEntry(data) {
 
     const row = [
       now,                    // Date Submitted
-      userEmail,              // Submitted By
+      userName,               // Submitted By (NAME not email)
       data.stock,             // Stock Number
       data.vin || '',         // VIN
       data.vehicle,           // Year/Make/Model
@@ -1643,9 +1667,16 @@ function showAccessoryForm() {
       button { background: #003366; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px; }
       button:hover { background: #004488; }
       h2 { color: #003366; margin-top: 0; }
+      .urgent-box { background: #FF4444; color: white; padding: 8px; border-radius: 4px; margin-bottom: 12px; }
+      .urgent-box label { color: white; display: inline; margin-left: 8px; }
+      .urgent-box input { width: auto; }
     </style>
     <h2>Add Customer Accessory Install</h2>
     <form id="form">
+      <div class="urgent-box">
+        <input type="checkbox" id="urgent">
+        <label for="urgent">URGENT / 911 - Needs immediate attention!</label>
+      </div>
       <div class="form-group">
         <label>Customer Name *</label>
         <input type="text" id="customer" required>
@@ -1704,6 +1735,7 @@ function showAccessoryForm() {
       document.getElementById('form').addEventListener('submit', function(e) {
         e.preventDefault();
         const data = {
+          urgent: document.getElementById('urgent').checked,
           customer: document.getElementById('customer').value,
           phone: document.getElementById('phone').value,
           email: document.getElementById('email').value,
@@ -1723,7 +1755,7 @@ function showAccessoryForm() {
     </script>
   `)
   .setWidth(500)
-  .setHeight(480);
+  .setHeight(520);
   SpreadsheetApp.getUi().showModalDialog(html, 'Add Customer Accessory Install');
 }
 
@@ -1740,11 +1772,18 @@ function addAccessoryEntry(data) {
     }
 
     const userEmail = Session.getActiveUser().getEmail();
+    const userName = getUserName(userEmail);
     const now = new Date();
+
+    // Add URGENT to notes if checked
+    let notes = data.notes || '';
+    if (data.urgent) {
+      notes = 'URGENT/911 - ' + notes;
+    }
 
     const row = [
       now,                    // Date Submitted
-      userEmail,              // Submitted By
+      userName,               // Submitted By (NAME not email)
       data.customer,          // Customer Name
       data.phone || '',       // Phone
       data.email || '',       // Email
@@ -1757,14 +1796,14 @@ function addAccessoryEntry(data) {
       data.techInstall,       // Requires Tech?
       'Part Ordered',         // Status
       '',                     // Appointment
-      data.notes || ''        // Notes
+      notes                   // Notes
     ];
 
     sheet.appendRow(row);
     SpreadsheetApp.flush(); // Force save
 
-    // Send notification if tech install needed
-    if (data.techInstall === 'Yes') {
+    // Send notification if tech install needed OR urgent
+    if (data.techInstall === 'Yes' || data.urgent) {
       try {
         sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.ACCESSORY_INSTALLS, userEmail);
       } catch (e) {
@@ -1797,9 +1836,16 @@ function showPartsForm() {
       button:hover { background: #004488; }
       h2 { color: #003366; margin-top: 0; }
       .sold-section { background: #FFF9C4; padding: 10px; border-radius: 4px; margin-top: 10px; display: none; }
+      .urgent-box { background: #FF4444; color: white; padding: 8px; border-radius: 4px; margin-bottom: 12px; }
+      .urgent-box label { color: white; display: inline; margin-left: 8px; }
+      .urgent-box input { width: auto; }
     </style>
     <h2>Add New Car Parts Install</h2>
     <form id="form">
+      <div class="urgent-box">
+        <input type="checkbox" id="urgent">
+        <label for="urgent">URGENT / 911 - Needs immediate attention!</label>
+      </div>
       <div class="row">
         <div class="form-group">
           <label>Stock Number *</label>
@@ -1855,6 +1901,7 @@ function showPartsForm() {
       document.getElementById('form').addEventListener('submit', function(e) {
         e.preventDefault();
         const data = {
+          urgent: document.getElementById('urgent').checked,
           stock: document.getElementById('stock').value,
           vin: document.getElementById('vin').value,
           vehicle: document.getElementById('vehicle').value,
@@ -1872,7 +1919,7 @@ function showPartsForm() {
     </script>
   `)
   .setWidth(450)
-  .setHeight(480);
+  .setHeight(520);
   SpreadsheetApp.getUi().showModalDialog(html, 'Add New Car Parts Install');
 }
 
@@ -1889,11 +1936,14 @@ function addPartsEntry(data) {
     }
 
     const userEmail = Session.getActiveUser().getEmail();
+    const userName = getUserName(userEmail);
     const now = new Date();
 
-    // Calculate priority
+    // Calculate priority - URGENT checkbox overrides everything
     let priority = 'Normal';
-    if (data.sold === 'Yes' && data.deliveryDate) {
+    if (data.urgent) {
+      priority = 'URGENT';
+    } else if (data.sold === 'Yes' && data.deliveryDate) {
       const delivery = new Date(data.deliveryDate);
       const hoursUntil = (delivery - now) / (1000 * 60 * 60);
       if (hoursUntil <= 24) priority = 'URGENT';
@@ -1902,7 +1952,7 @@ function addPartsEntry(data) {
 
     const row = [
       now,                    // Date Submitted
-      userEmail,              // Submitted By
+      userName,               // Submitted By (NAME not email)
       data.stock,             // Stock Number
       data.vin || '',         // VIN
       data.vehicle,           // Year/Make/Model
@@ -1949,12 +1999,16 @@ function showAppraisalForm() {
       button { background: #003366; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px; }
       button:hover { background: #004488; }
       h2 { color: #003366; margin-top: 0; }
-      .heat-hot { background: #FF0000; color: white; }
-      .heat-warm { background: #FFC107; }
-      .heat-cold { background: #2196F3; color: white; }
+      .urgent-box { background: #FF4444; color: white; padding: 8px; border-radius: 4px; margin-bottom: 12px; }
+      .urgent-box label { color: white; display: inline; margin-left: 8px; }
+      .urgent-box input { width: auto; }
     </style>
     <h2>Add Service Drive Appraisal</h2>
     <form id="form">
+      <div class="urgent-box">
+        <input type="checkbox" id="urgent">
+        <label for="urgent">URGENT / 911 - Customer waiting or hot lead!</label>
+      </div>
       <div class="form-group">
         <label>Customer Name *</label>
         <input type="text" id="customer" required>
@@ -2007,6 +2061,7 @@ function showAppraisalForm() {
       document.getElementById('form').addEventListener('submit', function(e) {
         e.preventDefault();
         const data = {
+          urgent: document.getElementById('urgent').checked,
           customer: document.getElementById('customer').value,
           phone: document.getElementById('phone').value,
           email: document.getElementById('email').value,
@@ -2024,7 +2079,7 @@ function showAppraisalForm() {
     </script>
   `)
   .setWidth(450)
-  .setHeight(520);
+  .setHeight(560);
   SpreadsheetApp.getUi().showModalDialog(html, 'Add Service Drive Appraisal');
 }
 
@@ -2041,23 +2096,32 @@ function addAppraisalEntry(data) {
     }
 
     const userEmail = Session.getActiveUser().getEmail();
+    const userName = getUserName(userEmail);
     const now = new Date();
+
+    // If URGENT, force heat level to Hot and prepend to notes
+    let heatLevel = data.heat;
+    let notes = data.notes || '';
+    if (data.urgent) {
+      heatLevel = 'Hot';
+      notes = 'URGENT/911 - ' + notes;
+    }
 
     const row = [
       now,                    // Date Submitted
-      userEmail,              // Submitted By
+      userName,               // Submitted By (NAME not email)
       data.customer,          // Customer Name
       data.phone,             // Phone
       data.email || '',       // Email
       data.vehicle,           // Vehicle
       data.mileage || '',     // Mileage
       data.service || '',     // Service Being Performed
-      data.heat,              // Heat Level
+      heatLevel,              // Heat Level (Hot if URGENT)
       data.reason,            // Reason
       'New Lead',             // Status
       '',                     // Assigned Salesperson
       '',                     // Follow-up Date
-      data.notes || ''        // Notes
+      notes                   // Notes (with URGENT prefix if checked)
     ];
 
     sheet.appendRow(row);
