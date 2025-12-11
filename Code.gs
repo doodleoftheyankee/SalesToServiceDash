@@ -64,6 +64,12 @@ const CONFIG = {
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Bridge Dashboard')
+    .addSubMenu(ui.createMenu('Add New Entry')
+      .addItem('Dealer Trade Re-PDI', 'showDealerTradeForm')
+      .addItem('Customer Accessory Install', 'showAccessoryForm')
+      .addItem('New Car Parts Install', 'showPartsForm')
+      .addItem('Service Drive Appraisal', 'showAppraisalForm'))
+    .addSeparator()
     .addItem('Refresh Dashboard', 'refreshDashboard')
     .addItem('Run Archive Now', 'archiveCompletedItems')
     .addSeparator()
@@ -1466,4 +1472,544 @@ function testEmailNotification() {
     '<h2>Test Email</h2><p>This is a test email from the Service-to-Sales Bridge Dashboard.</p>'
   );
   SpreadsheetApp.getUi().alert('Test email sent to: ' + testEmail);
+}
+
+// =============================================================================
+// QUICK ENTRY FORMS
+// =============================================================================
+
+/**
+ * Show Dealer Trade Re-PDI form
+ */
+function showDealerTradeForm() {
+  const html = HtmlService.createHtmlOutput(`
+    <style>
+      body { font-family: Arial, sans-serif; padding: 15px; }
+      .form-group { margin-bottom: 12px; }
+      label { display: block; font-weight: bold; margin-bottom: 4px; color: #003366; }
+      input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+      .row { display: flex; gap: 10px; }
+      .row .form-group { flex: 1; }
+      button { background: #003366; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px; }
+      button:hover { background: #004488; }
+      h2 { color: #003366; margin-top: 0; }
+      .sold-section { background: #FFF9C4; padding: 10px; border-radius: 4px; margin-top: 10px; display: none; }
+    </style>
+    <h2>Add Dealer Trade Re-PDI</h2>
+    <form id="form">
+      <div class="row">
+        <div class="form-group">
+          <label>Stock Number *</label>
+          <input type="text" id="stock" required>
+        </div>
+        <div class="form-group">
+          <label>VIN (Last 8)</label>
+          <input type="text" id="vin" maxlength="17">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Year/Make/Model *</label>
+        <input type="text" id="vehicle" placeholder="2024 GMC Sierra 1500" required>
+      </div>
+      <div class="form-group">
+        <label>Is it SOLD?</label>
+        <select id="sold" onchange="toggleSold()">
+          <option value="No">No</option>
+          <option value="Yes">Yes</option>
+        </select>
+      </div>
+      <div class="sold-section" id="soldSection">
+        <div class="form-group">
+          <label>Customer Name</label>
+          <input type="text" id="customer">
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label>Delivery Date</label>
+            <input type="date" id="deliveryDate">
+          </div>
+          <div class="form-group">
+            <label>Delivery Time</label>
+            <input type="time" id="deliveryTime">
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" id="notes" placeholder="Any special instructions...">
+      </div>
+      <button type="submit">Add Entry</button>
+    </form>
+    <script>
+      function toggleSold() {
+        document.getElementById('soldSection').style.display =
+          document.getElementById('sold').value === 'Yes' ? 'block' : 'none';
+      }
+      document.getElementById('form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = {
+          stock: document.getElementById('stock').value,
+          vin: document.getElementById('vin').value,
+          vehicle: document.getElementById('vehicle').value,
+          sold: document.getElementById('sold').value,
+          customer: document.getElementById('customer').value,
+          deliveryDate: document.getElementById('deliveryDate').value,
+          deliveryTime: document.getElementById('deliveryTime').value,
+          notes: document.getElementById('notes').value
+        };
+        google.script.run.withSuccessHandler(function() {
+          google.script.host.close();
+        }).addDealerTradeEntry(data);
+      });
+    </script>
+  `)
+  .setWidth(450)
+  .setHeight(480);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Add Dealer Trade Re-PDI');
+}
+
+/**
+ * Add dealer trade entry from form
+ */
+function addDealerTradeEntry(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.SHEETS.DEALER_TRADE);
+  const userEmail = Session.getActiveUser().getEmail();
+  const now = new Date();
+
+  // Calculate priority
+  let priority = 'Normal';
+  if (data.sold === 'Yes' && data.deliveryDate) {
+    const delivery = new Date(data.deliveryDate);
+    const hoursUntil = (delivery - now) / (1000 * 60 * 60);
+    if (hoursUntil <= 24) priority = 'URGENT';
+    else if (hoursUntil <= 48) priority = 'HIGH';
+  }
+
+  const row = [
+    now,                    // Date Submitted
+    userEmail,              // Submitted By
+    data.stock,             // Stock Number
+    data.vin,               // VIN
+    data.vehicle,           // Year/Make/Model
+    data.sold,              // SOLD?
+    data.customer || '',    // Customer Name
+    data.deliveryDate || '',// Delivery Date
+    data.deliveryTime || '',// Delivery Time
+    priority,               // Priority Flag
+    'Pending',              // Status
+    '',                     // Assigned To
+    '',                     // Completion Date
+    data.notes || ''        // Notes
+  ];
+
+  sheet.appendRow(row);
+
+  // Send notification
+  sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.DEALER_TRADE, userEmail);
+  refreshDashboard();
+
+  SpreadsheetApp.getActive().toast('Dealer Trade Re-PDI added successfully!', 'Success', 3);
+}
+
+/**
+ * Show Customer Accessory Install form
+ */
+function showAccessoryForm() {
+  const html = HtmlService.createHtmlOutput(`
+    <style>
+      body { font-family: Arial, sans-serif; padding: 15px; }
+      .form-group { margin-bottom: 12px; }
+      label { display: block; font-weight: bold; margin-bottom: 4px; color: #003366; }
+      input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+      .row { display: flex; gap: 10px; }
+      .row .form-group { flex: 1; }
+      button { background: #003366; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px; }
+      button:hover { background: #004488; }
+      h2 { color: #003366; margin-top: 0; }
+    </style>
+    <h2>Add Customer Accessory Install</h2>
+    <form id="form">
+      <div class="form-group">
+        <label>Customer Name *</label>
+        <input type="text" id="customer" required>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="tel" id="phone">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="email">
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>Vehicle *</label>
+          <input type="text" id="vehicle" placeholder="2024 GMC Acadia" required>
+        </div>
+        <div class="form-group">
+          <label>Stock # or VIN</label>
+          <input type="text" id="stock">
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>Part Number(s)</label>
+          <input type="text" id="partNum">
+        </div>
+        <div class="form-group">
+          <label>Part Description *</label>
+          <input type="text" id="partDesc" required>
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>Part Ordered?</label>
+          <select id="ordered"><option value="No">No</option><option value="Yes">Yes</option></select>
+        </div>
+        <div class="form-group">
+          <label>Part Received?</label>
+          <select id="received"><option value="No">No</option><option value="Yes">Yes</option></select>
+        </div>
+        <div class="form-group">
+          <label>Needs Tech Install?</label>
+          <select id="techInstall"><option value="Yes">Yes</option><option value="No">No</option></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" id="notes">
+      </div>
+      <button type="submit">Add Entry</button>
+    </form>
+    <script>
+      document.getElementById('form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = {
+          customer: document.getElementById('customer').value,
+          phone: document.getElementById('phone').value,
+          email: document.getElementById('email').value,
+          vehicle: document.getElementById('vehicle').value,
+          stock: document.getElementById('stock').value,
+          partNum: document.getElementById('partNum').value,
+          partDesc: document.getElementById('partDesc').value,
+          ordered: document.getElementById('ordered').value,
+          received: document.getElementById('received').value,
+          techInstall: document.getElementById('techInstall').value,
+          notes: document.getElementById('notes').value
+        };
+        google.script.run.withSuccessHandler(function() {
+          google.script.host.close();
+        }).addAccessoryEntry(data);
+      });
+    </script>
+  `)
+  .setWidth(500)
+  .setHeight(480);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Add Customer Accessory Install');
+}
+
+/**
+ * Add accessory entry from form
+ */
+function addAccessoryEntry(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.SHEETS.ACCESSORY_INSTALLS);
+  const userEmail = Session.getActiveUser().getEmail();
+  const now = new Date();
+
+  const row = [
+    now,                    // Date Submitted
+    userEmail,              // Submitted By
+    data.customer,          // Customer Name
+    data.phone || '',       // Phone
+    data.email || '',       // Email
+    data.vehicle,           // Vehicle
+    data.stock || '',       // Stock/VIN
+    data.partNum || '',     // Part Number
+    data.partDesc,          // Part Description
+    data.ordered,           // Part Ordered?
+    data.received,          // Part Received?
+    data.techInstall,       // Requires Tech?
+    'Part Ordered',         // Status
+    '',                     // Appointment
+    data.notes || ''        // Notes
+  ];
+
+  sheet.appendRow(row);
+
+  // Send notification if tech install needed
+  if (data.techInstall === 'Yes') {
+    sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.ACCESSORY_INSTALLS, userEmail);
+  }
+  refreshDashboard();
+
+  SpreadsheetApp.getActive().toast('Accessory Install added successfully!', 'Success', 3);
+}
+
+/**
+ * Show New Car Parts form
+ */
+function showPartsForm() {
+  const html = HtmlService.createHtmlOutput(`
+    <style>
+      body { font-family: Arial, sans-serif; padding: 15px; }
+      .form-group { margin-bottom: 12px; }
+      label { display: block; font-weight: bold; margin-bottom: 4px; color: #003366; }
+      input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+      .row { display: flex; gap: 10px; }
+      .row .form-group { flex: 1; }
+      button { background: #003366; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px; }
+      button:hover { background: #004488; }
+      h2 { color: #003366; margin-top: 0; }
+      .sold-section { background: #FFF9C4; padding: 10px; border-radius: 4px; margin-top: 10px; display: none; }
+    </style>
+    <h2>Add New Car Parts Install</h2>
+    <form id="form">
+      <div class="row">
+        <div class="form-group">
+          <label>Stock Number *</label>
+          <input type="text" id="stock" required>
+        </div>
+        <div class="form-group">
+          <label>VIN</label>
+          <input type="text" id="vin">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Year/Make/Model *</label>
+        <input type="text" id="vehicle" placeholder="2024 Buick Enclave" required>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>Part Number(s)</label>
+          <input type="text" id="partNum">
+        </div>
+        <div class="form-group">
+          <label>Part Description *</label>
+          <input type="text" id="partDesc" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Is it SOLD?</label>
+        <select id="sold" onchange="toggleSold()">
+          <option value="No">No</option>
+          <option value="Yes">Yes</option>
+        </select>
+      </div>
+      <div class="sold-section" id="soldSection">
+        <div class="form-group">
+          <label>Customer Name</label>
+          <input type="text" id="customer">
+        </div>
+        <div class="form-group">
+          <label>Delivery Date</label>
+          <input type="date" id="deliveryDate">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" id="notes">
+      </div>
+      <button type="submit">Add Entry</button>
+    </form>
+    <script>
+      function toggleSold() {
+        document.getElementById('soldSection').style.display =
+          document.getElementById('sold').value === 'Yes' ? 'block' : 'none';
+      }
+      document.getElementById('form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = {
+          stock: document.getElementById('stock').value,
+          vin: document.getElementById('vin').value,
+          vehicle: document.getElementById('vehicle').value,
+          partNum: document.getElementById('partNum').value,
+          partDesc: document.getElementById('partDesc').value,
+          sold: document.getElementById('sold').value,
+          customer: document.getElementById('customer').value,
+          deliveryDate: document.getElementById('deliveryDate').value,
+          notes: document.getElementById('notes').value
+        };
+        google.script.run.withSuccessHandler(function() {
+          google.script.host.close();
+        }).addPartsEntry(data);
+      });
+    </script>
+  `)
+  .setWidth(450)
+  .setHeight(480);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Add New Car Parts Install');
+}
+
+/**
+ * Add parts entry from form
+ */
+function addPartsEntry(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.SHEETS.NEW_CAR_PARTS);
+  const userEmail = Session.getActiveUser().getEmail();
+  const now = new Date();
+
+  // Calculate priority
+  let priority = 'Normal';
+  if (data.sold === 'Yes' && data.deliveryDate) {
+    const delivery = new Date(data.deliveryDate);
+    const hoursUntil = (delivery - now) / (1000 * 60 * 60);
+    if (hoursUntil <= 24) priority = 'URGENT';
+    else if (hoursUntil <= 48) priority = 'HIGH';
+  }
+
+  const row = [
+    now,                    // Date Submitted
+    userEmail,              // Submitted By
+    data.stock,             // Stock Number
+    data.vin || '',         // VIN
+    data.vehicle,           // Year/Make/Model
+    data.partNum || '',     // Part Number
+    data.partDesc,          // Part Description
+    data.sold,              // SOLD?
+    data.customer || '',    // Customer Name
+    data.deliveryDate || '',// Delivery Date
+    priority,               // Priority Flag
+    'Pending',              // Status
+    data.notes || ''        // Notes
+  ];
+
+  sheet.appendRow(row);
+
+  sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.NEW_CAR_PARTS, userEmail);
+  refreshDashboard();
+
+  SpreadsheetApp.getActive().toast('Parts Install added successfully!', 'Success', 3);
+}
+
+/**
+ * Show Service Drive Appraisal form
+ */
+function showAppraisalForm() {
+  const html = HtmlService.createHtmlOutput(`
+    <style>
+      body { font-family: Arial, sans-serif; padding: 15px; }
+      .form-group { margin-bottom: 12px; }
+      label { display: block; font-weight: bold; margin-bottom: 4px; color: #003366; }
+      input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+      .row { display: flex; gap: 10px; }
+      .row .form-group { flex: 1; }
+      button { background: #003366; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px; }
+      button:hover { background: #004488; }
+      h2 { color: #003366; margin-top: 0; }
+      .heat-hot { background: #FF0000; color: white; }
+      .heat-warm { background: #FFC107; }
+      .heat-cold { background: #2196F3; color: white; }
+    </style>
+    <h2>Add Service Drive Appraisal</h2>
+    <form id="form">
+      <div class="form-group">
+        <label>Customer Name *</label>
+        <input type="text" id="customer" required>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>Phone *</label>
+          <input type="tel" id="phone" required>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="email">
+        </div>
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>Their Vehicle *</label>
+          <input type="text" id="vehicle" placeholder="2019 Ford F-150" required>
+        </div>
+        <div class="form-group">
+          <label>Mileage</label>
+          <input type="text" id="mileage" placeholder="65,000">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Service Being Performed</label>
+        <input type="text" id="service" placeholder="Oil change, brake inspection, etc.">
+      </div>
+      <div class="row">
+        <div class="form-group">
+          <label>Heat Level *</label>
+          <select id="heat" required>
+            <option value="Hot">HOT - Strong interest</option>
+            <option value="Warm">WARM - Some interest</option>
+            <option value="Cold">COLD - Worth following up</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Why this heat level? *</label>
+        <input type="text" id="reason" placeholder="Complained about payments, asked about new trucks..." required>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <input type="text" id="notes">
+      </div>
+      <button type="submit">Add Entry</button>
+    </form>
+    <script>
+      document.getElementById('form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const data = {
+          customer: document.getElementById('customer').value,
+          phone: document.getElementById('phone').value,
+          email: document.getElementById('email').value,
+          vehicle: document.getElementById('vehicle').value,
+          mileage: document.getElementById('mileage').value,
+          service: document.getElementById('service').value,
+          heat: document.getElementById('heat').value,
+          reason: document.getElementById('reason').value,
+          notes: document.getElementById('notes').value
+        };
+        google.script.run.withSuccessHandler(function() {
+          google.script.host.close();
+        }).addAppraisalEntry(data);
+      });
+    </script>
+  `)
+  .setWidth(450)
+  .setHeight(520);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Add Service Drive Appraisal');
+}
+
+/**
+ * Add appraisal entry from form
+ */
+function addAppraisalEntry(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.SHEETS.SERVICE_APPRAISALS);
+  const userEmail = Session.getActiveUser().getEmail();
+  const now = new Date();
+
+  const row = [
+    now,                    // Date Submitted
+    userEmail,              // Submitted By
+    data.customer,          // Customer Name
+    data.phone,             // Phone
+    data.email || '',       // Email
+    data.vehicle,           // Vehicle
+    data.mileage || '',     // Mileage
+    data.service || '',     // Service Being Performed
+    data.heat,              // Heat Level
+    data.reason,            // Reason
+    'New Lead',             // Status
+    '',                     // Assigned Salesperson
+    '',                     // Follow-up Date
+    data.notes || ''        // Notes
+  ];
+
+  sheet.appendRow(row);
+
+  sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.SERVICE_APPRAISALS, userEmail);
+  refreshDashboard();
+
+  SpreadsheetApp.getActive().toast('Service Drive Appraisal added successfully!', 'Success', 3);
 }
