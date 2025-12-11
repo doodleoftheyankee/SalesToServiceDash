@@ -68,8 +68,8 @@ function onOpen() {
     .addItem('Run Archive Now', 'archiveCompletedItems')
     .addSeparator()
     .addItem('Setup Sheet Structure', 'setupAllSheets')
-    .addItem('Apply Protections', 'applyProtections')
     .addItem('Setup Triggers', 'setupTriggers')
+    .addItem('Remove All Locks', 'removeAllProtections')
     .addToUi();
 }
 
@@ -78,17 +78,15 @@ function onOpen() {
  */
 function initialSetup() {
   setupAllSheets();
-  applyProtections();
   setupTriggers();
+  applyConditionalFormatting();
   refreshDashboard();
 
   SpreadsheetApp.getUi().alert(
     'Setup Complete!',
     'The Service-to-Sales Bridge Dashboard has been configured.\n\n' +
-    'Authorized editors:\n' +
-    '- Brian Callahan (callahanscollectables@gmail.com)\n' +
-    '- Dan Testa (dtesta620@gmail.com)\n\n' +
-    'Email notifications are now active.',
+    'Email notifications are now active.\n\n' +
+    'Share this sheet with Dan (dtesta620@gmail.com) using the Share button!',
     SpreadsheetApp.getUi().ButtonSet.OK
   );
 }
@@ -1436,99 +1434,25 @@ function archiveFromSheet(ss, archiveSheet, config, cutoffDate) {
 }
 
 // =============================================================================
-// SHEET PROTECTION
-// =============================================================================
-
-/**
- * Apply protection to all sheets
- */
-function applyProtections() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheets = ss.getSheets();
-
-  const authorizedEditors = [CONFIG.BRIAN_EMAIL, CONFIG.DAN_EMAIL];
-
-  sheets.forEach(sheet => {
-    // Remove existing protections
-    const protections = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
-    protections.forEach(p => p.remove());
-
-    // Add new protection
-    const protection = sheet.protect()
-      .setDescription('Protected - Only authorized users can edit');
-
-    // Remove all editors except authorized ones
-    const editors = protection.getEditors();
-    editors.forEach(editor => {
-      if (!authorizedEditors.includes(editor.getEmail())) {
-        protection.removeEditor(editor);
-      }
-    });
-
-    // Add authorized editors
-    authorizedEditors.forEach(email => {
-      try {
-        protection.addEditor(email);
-      } catch (e) {
-        Logger.log('Could not add editor: ' + email + ' - ' + e.message);
-      }
-    });
-
-    // Protect auto-calculated columns
-    protectAutoColumns(sheet);
-  });
-
-  Logger.log('Protections applied. Authorized editors: ' + authorizedEditors.join(', '));
-}
-
-/**
- * Protect auto-calculated columns from editing
- */
-function protectAutoColumns(sheet) {
-  const sheetName = sheet.getName();
-  let protectedCols = [];
-
-  switch (sheetName) {
-    case CONFIG.SHEETS.DEALER_TRADE:
-      protectedCols = [1, 2, 10, 13]; // Date, User, Priority, Completion Date
-      break;
-    case CONFIG.SHEETS.ACCESSORY_INSTALLS:
-      protectedCols = [1, 2]; // Date, User
-      break;
-    case CONFIG.SHEETS.NEW_CAR_PARTS:
-      protectedCols = [1, 2, 11]; // Date, User, Priority
-      break;
-    case CONFIG.SHEETS.SERVICE_APPRAISALS:
-      protectedCols = [1, 2]; // Date, User
-      break;
-    default:
-      return;
-  }
-
-  // Note: In production, you might want to use range-level protection for these columns
-  // This is simplified for initial setup
-}
-
-// =============================================================================
 // UTILITY FUNCTIONS
 // =============================================================================
 
 /**
- * Check if current user is authorized
+ * Remove all sheet protections (run this if sheets are locked)
  */
-function isAuthorizedUser() {
-  const email = Session.getActiveUser().getEmail();
-  return email === CONFIG.BRIAN_EMAIL || email === CONFIG.DAN_EMAIL;
-}
+function removeAllProtections() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = ss.getSheets();
 
-/**
- * Get current user's name for display
- */
-function getCurrentUserName() {
-  const email = Session.getActiveUser().getEmail();
-  if (email === CONFIG.BRIAN_EMAIL) return 'Brian Callahan';
-  if (email === CONFIG.DAN_EMAIL) return 'Dan Testa';
-  return email;
+  sheets.forEach(sheet => {
+    const protections = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+    protections.forEach(p => p.remove());
+
+    const rangeProtections = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+    rangeProtections.forEach(p => p.remove());
+  });
+
+  SpreadsheetApp.getUi().alert('All locks have been removed. Sheets are now fully editable.');
 }
 
 /**
@@ -1542,17 +1466,4 @@ function testEmailNotification() {
     '<h2>Test Email</h2><p>This is a test email from the Service-to-Sales Bridge Dashboard.</p>'
   );
   SpreadsheetApp.getUi().alert('Test email sent to: ' + testEmail);
-}
-
-/**
- * Debug function to check authorization
- */
-function checkAuthorization() {
-  const email = Session.getActiveUser().getEmail();
-  const isAuth = isAuthorizedUser();
-  SpreadsheetApp.getUi().alert(
-    'Authorization Check',
-    'Current User: ' + email + '\nAuthorized: ' + (isAuth ? 'Yes' : 'No'),
-    SpreadsheetApp.getUi().ButtonSet.OK
-  );
 }
