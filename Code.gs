@@ -1572,44 +1572,60 @@ function showDealerTradeForm() {
  * Add dealer trade entry from form
  */
 function addDealerTradeEntry(data) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CONFIG.SHEETS.DEALER_TRADE);
-  const userEmail = Session.getActiveUser().getEmail();
-  const now = new Date();
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.SHEETS.DEALER_TRADE);
 
-  // Calculate priority
-  let priority = 'Normal';
-  if (data.sold === 'Yes' && data.deliveryDate) {
-    const delivery = new Date(data.deliveryDate);
-    const hoursUntil = (delivery - now) / (1000 * 60 * 60);
-    if (hoursUntil <= 24) priority = 'URGENT';
-    else if (hoursUntil <= 48) priority = 'HIGH';
+    if (!sheet) {
+      throw new Error('Sheet "Dealer Trade Re-PDIs" not found. Run Setup Sheet Structure first.');
+    }
+
+    const userEmail = Session.getActiveUser().getEmail();
+    const now = new Date();
+
+    // Calculate priority
+    let priority = 'Normal';
+    if (data.sold === 'Yes' && data.deliveryDate) {
+      const delivery = new Date(data.deliveryDate);
+      const hoursUntil = (delivery - now) / (1000 * 60 * 60);
+      if (hoursUntil <= 24) priority = 'URGENT';
+      else if (hoursUntil <= 48) priority = 'HIGH';
+    }
+
+    const row = [
+      now,                    // Date Submitted
+      userEmail,              // Submitted By
+      data.stock,             // Stock Number
+      data.vin || '',         // VIN
+      data.vehicle,           // Year/Make/Model
+      data.sold,              // SOLD?
+      data.customer || '',    // Customer Name
+      data.deliveryDate || '',// Delivery Date
+      data.deliveryTime || '',// Delivery Time
+      priority,               // Priority Flag
+      'Pending',              // Status
+      '',                     // Assigned To
+      '',                     // Completion Date
+      data.notes || ''        // Notes
+    ];
+
+    sheet.appendRow(row);
+    SpreadsheetApp.flush(); // Force save
+
+    // Send notification (don't let this break the save)
+    try {
+      sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.DEALER_TRADE, userEmail);
+    } catch (e) {
+      Logger.log('Notification error: ' + e.message);
+    }
+
+    refreshDashboard();
+    SpreadsheetApp.getActive().toast('Dealer Trade Re-PDI added!', 'Success', 3);
+
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('Error: ' + error.message);
+    throw error;
   }
-
-  const row = [
-    now,                    // Date Submitted
-    userEmail,              // Submitted By
-    data.stock,             // Stock Number
-    data.vin,               // VIN
-    data.vehicle,           // Year/Make/Model
-    data.sold,              // SOLD?
-    data.customer || '',    // Customer Name
-    data.deliveryDate || '',// Delivery Date
-    data.deliveryTime || '',// Delivery Time
-    priority,               // Priority Flag
-    'Pending',              // Status
-    '',                     // Assigned To
-    '',                     // Completion Date
-    data.notes || ''        // Notes
-  ];
-
-  sheet.appendRow(row);
-
-  // Send notification
-  sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.DEALER_TRADE, userEmail);
-  refreshDashboard();
-
-  SpreadsheetApp.getActive().toast('Dealer Trade Re-PDI added successfully!', 'Success', 3);
 }
 
 /**
@@ -1715,38 +1731,54 @@ function showAccessoryForm() {
  * Add accessory entry from form
  */
 function addAccessoryEntry(data) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CONFIG.SHEETS.ACCESSORY_INSTALLS);
-  const userEmail = Session.getActiveUser().getEmail();
-  const now = new Date();
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.SHEETS.ACCESSORY_INSTALLS);
 
-  const row = [
-    now,                    // Date Submitted
-    userEmail,              // Submitted By
-    data.customer,          // Customer Name
-    data.phone || '',       // Phone
-    data.email || '',       // Email
-    data.vehicle,           // Vehicle
-    data.stock || '',       // Stock/VIN
-    data.partNum || '',     // Part Number
-    data.partDesc,          // Part Description
-    data.ordered,           // Part Ordered?
-    data.received,          // Part Received?
-    data.techInstall,       // Requires Tech?
-    'Part Ordered',         // Status
-    '',                     // Appointment
-    data.notes || ''        // Notes
-  ];
+    if (!sheet) {
+      throw new Error('Sheet "Customer Accessory Installs" not found. Run Setup Sheet Structure first.');
+    }
 
-  sheet.appendRow(row);
+    const userEmail = Session.getActiveUser().getEmail();
+    const now = new Date();
 
-  // Send notification if tech install needed
-  if (data.techInstall === 'Yes') {
-    sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.ACCESSORY_INSTALLS, userEmail);
+    const row = [
+      now,                    // Date Submitted
+      userEmail,              // Submitted By
+      data.customer,          // Customer Name
+      data.phone || '',       // Phone
+      data.email || '',       // Email
+      data.vehicle,           // Vehicle
+      data.stock || '',       // Stock/VIN
+      data.partNum || '',     // Part Number
+      data.partDesc,          // Part Description
+      data.ordered,           // Part Ordered?
+      data.received,          // Part Received?
+      data.techInstall,       // Requires Tech?
+      'Part Ordered',         // Status
+      '',                     // Appointment
+      data.notes || ''        // Notes
+    ];
+
+    sheet.appendRow(row);
+    SpreadsheetApp.flush(); // Force save
+
+    // Send notification if tech install needed
+    if (data.techInstall === 'Yes') {
+      try {
+        sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.ACCESSORY_INSTALLS, userEmail);
+      } catch (e) {
+        Logger.log('Notification error: ' + e.message);
+      }
+    }
+    refreshDashboard();
+
+    SpreadsheetApp.getActive().toast('Accessory Install added!', 'Success', 3);
+
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('Error: ' + error.message);
+    throw error;
   }
-  refreshDashboard();
-
-  SpreadsheetApp.getActive().toast('Accessory Install added successfully!', 'Success', 3);
 }
 
 /**
@@ -1848,42 +1880,58 @@ function showPartsForm() {
  * Add parts entry from form
  */
 function addPartsEntry(data) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CONFIG.SHEETS.NEW_CAR_PARTS);
-  const userEmail = Session.getActiveUser().getEmail();
-  const now = new Date();
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.SHEETS.NEW_CAR_PARTS);
 
-  // Calculate priority
-  let priority = 'Normal';
-  if (data.sold === 'Yes' && data.deliveryDate) {
-    const delivery = new Date(data.deliveryDate);
-    const hoursUntil = (delivery - now) / (1000 * 60 * 60);
-    if (hoursUntil <= 24) priority = 'URGENT';
-    else if (hoursUntil <= 48) priority = 'HIGH';
+    if (!sheet) {
+      throw new Error('Sheet "New Car Parts Installation" not found. Run Setup Sheet Structure first.');
+    }
+
+    const userEmail = Session.getActiveUser().getEmail();
+    const now = new Date();
+
+    // Calculate priority
+    let priority = 'Normal';
+    if (data.sold === 'Yes' && data.deliveryDate) {
+      const delivery = new Date(data.deliveryDate);
+      const hoursUntil = (delivery - now) / (1000 * 60 * 60);
+      if (hoursUntil <= 24) priority = 'URGENT';
+      else if (hoursUntil <= 48) priority = 'HIGH';
+    }
+
+    const row = [
+      now,                    // Date Submitted
+      userEmail,              // Submitted By
+      data.stock,             // Stock Number
+      data.vin || '',         // VIN
+      data.vehicle,           // Year/Make/Model
+      data.partNum || '',     // Part Number
+      data.partDesc,          // Part Description
+      data.sold,              // SOLD?
+      data.customer || '',    // Customer Name
+      data.deliveryDate || '',// Delivery Date
+      priority,               // Priority Flag
+      'Pending',              // Status
+      data.notes || ''        // Notes
+    ];
+
+    sheet.appendRow(row);
+    SpreadsheetApp.flush(); // Force save
+
+    try {
+      sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.NEW_CAR_PARTS, userEmail);
+    } catch (e) {
+      Logger.log('Notification error: ' + e.message);
+    }
+    refreshDashboard();
+
+    SpreadsheetApp.getActive().toast('Parts Install added!', 'Success', 3);
+
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('Error: ' + error.message);
+    throw error;
   }
-
-  const row = [
-    now,                    // Date Submitted
-    userEmail,              // Submitted By
-    data.stock,             // Stock Number
-    data.vin || '',         // VIN
-    data.vehicle,           // Year/Make/Model
-    data.partNum || '',     // Part Number
-    data.partDesc,          // Part Description
-    data.sold,              // SOLD?
-    data.customer || '',    // Customer Name
-    data.deliveryDate || '',// Delivery Date
-    priority,               // Priority Flag
-    'Pending',              // Status
-    data.notes || ''        // Notes
-  ];
-
-  sheet.appendRow(row);
-
-  sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.NEW_CAR_PARTS, userEmail);
-  refreshDashboard();
-
-  SpreadsheetApp.getActive().toast('Parts Install added successfully!', 'Success', 3);
 }
 
 /**
@@ -1984,32 +2032,48 @@ function showAppraisalForm() {
  * Add appraisal entry from form
  */
 function addAppraisalEntry(data) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CONFIG.SHEETS.SERVICE_APPRAISALS);
-  const userEmail = Session.getActiveUser().getEmail();
-  const now = new Date();
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.SHEETS.SERVICE_APPRAISALS);
 
-  const row = [
-    now,                    // Date Submitted
-    userEmail,              // Submitted By
-    data.customer,          // Customer Name
-    data.phone,             // Phone
-    data.email || '',       // Email
-    data.vehicle,           // Vehicle
-    data.mileage || '',     // Mileage
-    data.service || '',     // Service Being Performed
-    data.heat,              // Heat Level
-    data.reason,            // Reason
-    'New Lead',             // Status
-    '',                     // Assigned Salesperson
-    '',                     // Follow-up Date
-    data.notes || ''        // Notes
-  ];
+    if (!sheet) {
+      throw new Error('Sheet "Service Drive Appraisals" not found. Run Setup Sheet Structure first.');
+    }
 
-  sheet.appendRow(row);
+    const userEmail = Session.getActiveUser().getEmail();
+    const now = new Date();
 
-  sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.SERVICE_APPRAISALS, userEmail);
-  refreshDashboard();
+    const row = [
+      now,                    // Date Submitted
+      userEmail,              // Submitted By
+      data.customer,          // Customer Name
+      data.phone,             // Phone
+      data.email || '',       // Email
+      data.vehicle,           // Vehicle
+      data.mileage || '',     // Mileage
+      data.service || '',     // Service Being Performed
+      data.heat,              // Heat Level
+      data.reason,            // Reason
+      'New Lead',             // Status
+      '',                     // Assigned Salesperson
+      '',                     // Follow-up Date
+      data.notes || ''        // Notes
+    ];
 
-  SpreadsheetApp.getActive().toast('Service Drive Appraisal added successfully!', 'Success', 3);
+    sheet.appendRow(row);
+    SpreadsheetApp.flush(); // Force save
+
+    try {
+      sendNewEntryNotification(sheet, sheet.getLastRow(), CONFIG.SHEETS.SERVICE_APPRAISALS, userEmail);
+    } catch (e) {
+      Logger.log('Notification error: ' + e.message);
+    }
+    refreshDashboard();
+
+    SpreadsheetApp.getActive().toast('Service Drive Appraisal added!', 'Success', 3);
+
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('Error: ' + error.message);
+    throw error;
+  }
 }
