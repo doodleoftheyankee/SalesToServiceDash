@@ -5,7 +5,7 @@
  * Apps Script for managing communication between Sales and Service departments
  *
  * Authorized Users:
- * - Brian Callahan (bcallahan@unionparkgmc.com) - Sales Manager
+ * - Brian Callahan (callahanscollectables@gmail.com) - Sales Manager
  * - Dan Testa (dtesta620@gmail.com) - Service Manager
  */
 
@@ -15,7 +15,7 @@
 
 const CONFIG = {
   // Authorized users
-  BRIAN_EMAIL: 'bcallahan@unionparkgmc.com',
+  BRIAN_EMAIL: 'callahanscollectables@gmail.com',
   DAN_EMAIL: 'dtesta620@gmail.com',
 
   // Sheet names
@@ -86,7 +86,7 @@ function initialSetup() {
     'Setup Complete!',
     'The Service-to-Sales Bridge Dashboard has been configured.\n\n' +
     'Authorized editors:\n' +
-    '- Brian Callahan (bcallahan@unionparkgmc.com)\n' +
+    '- Brian Callahan (callahanscollectables@gmail.com)\n' +
     '- Dan Testa (dtesta620@gmail.com)\n\n' +
     'Email notifications are now active.',
     SpreadsheetApp.getUi().ButtonSet.OK
